@@ -5,7 +5,7 @@ from pathlib import Path
 logger = logging.getLogger(__name__)
 
 # ImageMagick configuration
-IMAGEMAGICK_BINARY = r"C:\Program Files\ImageMagick-7.1.1-Q16-HDRI\magick.exe"
+IMAGEMAGICK_BINARY = r"C:\Program Files\ImageMagick-7.1.2-Q16-HDRI\magick.exe"
 
 # Validate ImageMagick path
 if not Path(IMAGEMAGICK_BINARY).exists():

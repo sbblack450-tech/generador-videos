@@ -12,6 +12,13 @@ from moviepy.audio.fx.audio_loop import audio_loop
 from moviepy.audio.fx.audio_normalize import audio_normalize
 import requests
 
+# === PARCHE DE COMPATIBILIDAD PARA PILLOW 10+ ===
+import PIL.Image
+if not hasattr(PIL.Image, 'ANTIALIAS'):
+    PIL.Image.ANTIALIAS = PIL.Image.LANCZOS
+    print("Pillow patch applied: ANTIALIAS -> LANCZOS")
+# ==============================================
+
 logger = logging.getLogger(__name__)
 
 
@@ -35,20 +42,7 @@ def get_program_path(program_name):
     return program_path
 
 def get_output_media(audio_file_path, timed_captions, background_video_data, video_server):
-    """Generate final video with audio and captions
-    
-    Args:
-        audio_file_path (str): Path to audio file
-        timed_captions (list): List of timed captions
-        background_video_data (list): List of background video data
-        video_server (str): Video server URL
-        
-    Returns:
-        str: Path to output video file
-        
-    Raises:
-        Exception: If video rendering fails
-    """
+    """Generate final video with audio and captions"""
     OUTPUT_FILE_NAME = "rendered_video.mp4"
     from utility.conf import IMAGEMAGICK_BINARY
     from moviepy.config import change_settings
@@ -69,10 +63,6 @@ def get_output_media(audio_file_path, timed_captions, background_video_data, vid
         raise Exception(f"Initial setup failed: {str(e)}")
 
 
-
-
-
-    
     visual_clips = []
     for (t1, t2), video_url in background_video_data:
         try:
@@ -86,12 +76,19 @@ def get_output_media(audio_file_path, timed_captions, background_video_data, vid
                 
             # Create VideoFileClip from the downloaded file
             video_clip = VideoFileClip(video_filename)
+            video_clip = video_clip.resize(width=640)
             if video_clip is None:
                 raise ValueError(f"Failed to create video clip from {video_filename}")
+            
+            # === OPTIMIZACIÓN: Reducir resolución a 480p para ahorrar memoria ===
+            if video_clip.w > 854:
+                video_clip = video_clip.resize(width=854)
+                logger.info(f"Resized video clip to 854x{video_clip.h}")
                 
             video_clip = video_clip.set_start(t1)
             video_clip = video_clip.set_end(t2)
             visual_clips.append(video_clip)
+            video_clip.close()  # Libera el archivo y la memoria
             logger.info(f"Added video clip from {video_url} ({t1}-{t2}s)")
             
         except Exception as e:
@@ -126,13 +123,13 @@ def get_output_media(audio_file_path, timed_captions, background_video_data, vid
 
     for (t1, t2), text in timed_captions:
         try:
-            # Updated caption style: changed font, fontsize, and position.
+            # === OPTIMIZACIÓN: Subtítulos más ligeros ===
             text_clip = TextClip(
                 txt=text, 
-                fontsize=70, 
+                fontsize=50, 
                 font="Arial-Bold", 
                 color="white", 
-                stroke_width=2, 
+                stroke_width=1, 
                 stroke_color="black", 
                 method="label"
             )
@@ -148,26 +145,35 @@ def get_output_media(audio_file_path, timed_captions, background_video_data, vid
     try:
         if not visual_clips:
             raise ValueError("No visual clips available for rendering")
-            
-        video = CompositeVideoClip(visual_clips)
+        
+        # === OPTIMIZACIÓN: Forzar un lienzo de 480p ===
+        video = CompositeVideoClip(visual_clips, size=(854, 480))
         
         if audio_clips:
             audio = CompositeAudioClip(audio_clips)
-            # Ensure video duration matches audio and update video with audio properly
+            # Ensure video duration matches audio
             if video.duration < audio.duration:
                 last_clip = visual_clips[-1]
                 extended_clip = last_clip.set_end(audio.duration)
                 visual_clips[-1] = extended_clip
-                video = CompositeVideoClip(visual_clips)
+                video = CompositeVideoClip(visual_clips, size=(854, 480))
                 
             video = video.set_duration(audio.duration)
-            # Updated audio application using set_audio
             video = video.set_audio(audio)
             logger.info(f"Audio synchronized with video (duration: {video.duration:.2f}s)")
 
 
         logger.info(f"Rendering final video to {OUTPUT_FILE_NAME}")
-        video.write_videofile(OUTPUT_FILE_NAME, codec='libx264', audio_codec='aac', fps=25, preset='veryfast')
+        # === OPTIMIZACIONES DE RENDERIZADO ===
+        video.write_videofile(
+            OUTPUT_FILE_NAME, 
+            codec='libx264', 
+            audio_codec='aac', 
+            fps=24, 
+            preset='ultrafast', 
+            threads=4, 
+            logger=None
+        )
         
         # Clean up downloaded files
         for (t1, t2), video_url in background_video_data:

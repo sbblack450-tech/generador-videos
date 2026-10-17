@@ -1,32 +1,17 @@
-import edge_tts
+from gtts import gTTS
 import os
-import logging
 
-logger = logging.getLogger(__name__)
-
-async def generate_audio(text, outputFilename):
-    """Generate audio from text using edge_tts
-    
-    Args:
-        text (str): Text to convert to speech
-        outputFilename (str): Path to save the audio file
-        
-    Raises:
-        Exception: If audio generation fails
+async def generate_audio(text, output_file):
+    """
+    Genera un archivo de audio a partir de un texto usando gTTS (Google TTS).
     """
     try:
-        # Ensure output directory exists
-        os.makedirs(os.path.dirname(outputFilename), exist_ok=True)
-        
-        logger.info(f"Generating audio for text length: {len(text)}")
-        # Updated voice parameter below:
-        communicate = edge_tts.Communicate(text, "en-US-GuyNeural")
-        await communicate.save(outputFilename)
-        
-        if not os.path.exists(outputFilename):
-            raise Exception(f"Failed to create audio file at {outputFilename}")
-            
-        logger.info(f"Successfully generated audio at {outputFilename}")
+        print(f"Generando audio con gTTS para: {text[:80]}...")
+        # gTTS guarda directamente en formato MP3
+        tts = gTTS(text=text, lang='en', slow=False)
+        tts.save(output_file)
+        print(f"Audio guardado en: {output_file}")
+        return True
     except Exception as e:
-        logger.error(f"Error generating audio: {str(e)}")
-        raise Exception(f"Audio generation failed: {str(e)}")
+        print(f"Error generating audio with gTTS: {e}")
+        return False
